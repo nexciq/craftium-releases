@@ -1,0 +1,95 @@
+# UWAGA: ten plik należy do repo nexciq/craftium-releases (publiczne, darmowe Actions),
+# jako .github/workflows/release.yml. Tutaj (w prywatnym craftium) leży tylko kopia
+# referencyjna — NIE w .github/workflows/, żeby nie uruchamiał się w płatnym repo.
+#
+# Wymaga sekretu SOURCE_TOKEN (fine-grained PAT, Contents: Read na nexciq/craftium).
+# Publikacja idzie do tego samego repo (craftium-releases) wbudowanym GITHUB_TOKEN.
+
+name: Build & Release (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Gałąź/tag w repo źródłowym (nexciq/craftium)'
+        default: claude/minecraft-launcher-build-52gbha
+
+jobs:
+  # Mod kosmetyków (Fabric) — budowany na Ubuntu i dołączany do instalatora.
+  mod:
+    name: Mod kosmetyków (Fabric)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: Build mod
+        working-directory: cosmetics-mod
+        run: gradle build --no-daemon --stacktrace
+
+      - name: Wybierz główny jar (bez sources)
+        run: |
+          mkdir -p staged
+          jar=$(ls cosmetics-mod/build/libs/craftium-cosmetics-*.jar | grep -v sources | head -1)
+          echo "Pakuję: $jar"
+          cp "$jar" staged/craftium-cosmetics.jar
+
+      - name: Upload jar moda
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-mod-jar
+          path: staged/craftium-cosmetics.jar
+          if-no-files-found: error
+
+  package:
+    name: Instalator Windows
+    needs: mod
+    runs-on: windows-latest
+    permissions:
+      contents: write # GITHUB_TOKEN tworzy/aktualizuje Release w craftium-releases
+
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Wbuduj mod kosmetyków (kopiowany do instancji przy starcie gry).
+      - name: Pobierz jar moda
+        uses: actions/download-artifact@v4
+        with:
+          name: cosmetics-mod-jar
+          path: resources/mods
+
+      - name: Build (renderer/main/preload)
+        run: npm run build
+
+      # Publikacja idzie do repo, w którym działa workflow (craftium-releases),
+      # więc wystarczy wbudowany GITHUB_TOKEN — bez PAT-a do zapisu.
+      - name: Package & publish (Windows)
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
