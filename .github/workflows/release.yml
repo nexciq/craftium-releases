@@ -15,9 +15,13 @@ on:
         default: claude/minecraft-launcher-build-52gbha
 
 jobs:
-  # Mod kosmetyków (Fabric) — budowany na Ubuntu i dołączany do instalatora.
+  # Mod kosmetyków (Fabric) — JEDNO źródło multi-wersyjne (Stonecutter).
+  # `chiseledBuild` buduje craftium-cosmetics-<wersja MC>.jar dla wszystkich
+  # wersji skonfigurowanych w cosmetics-mod-mv/settings.gradle.kts naraz.
+  # Dodanie wersji = wpis w `versions(...)` tam (+ ew. guard //?), nie tutaj.
+  # Zwalidowane wcześniej przez workflow „Validate mod versions".
   mod:
-    name: Mod kosmetyków (Fabric)
+    name: Mod kosmetyków (Stonecutter — wszystkie wersje)
     runs-on: ubuntu-latest
     steps:
       - name: Pobierz prywatne źródło
@@ -36,22 +40,28 @@ jobs:
         with:
           gradle-version: '8.10'
 
-      - name: Build mod
-        working-directory: cosmetics-mod
-        run: gradle build --no-daemon --stacktrace
+      - name: chiseledBuild (wszystkie wersje)
+        working-directory: cosmetics-mod-mv
+        run: gradle chiseledBuild --no-daemon --stacktrace
 
-      - name: Wybierz główny jar (bez sources)
+      - name: Zbierz jary per wersja
+        working-directory: cosmetics-mod-mv
         run: |
           mkdir -p staged
-          jar=$(ls cosmetics-mod/build/libs/craftium-cosmetics-*.jar | grep -v sources | head -1)
-          echo "Pakuję: $jar"
-          cp "$jar" staged/craftium-cosmetics.jar
+          find . -path '*/build/libs/*.jar' -name 'craftium-cosmetics-*.jar' ! -name '*-sources.jar' |
+          while read -r jar; do
+            ver=$(printf '%s' "$jar" | sed -n 's#.*/versions/\([^/]*\)/.*#\1#p')
+            [ -z "$ver" ] && ver=$(basename "$jar" .jar)
+            cp "$jar" "staged/craftium-cosmetics-${ver}.jar"
+            echo "OK ${ver} <- ${jar}"
+          done
+          echo "== staged =="; ls -la staged
 
-      - name: Upload jar moda
+      - name: Upload jary moda
         uses: actions/upload-artifact@v4
         with:
-          name: cosmetics-mod-jar
-          path: staged/craftium-cosmetics.jar
+          name: cosmetics-mod-jars
+          path: cosmetics-mod-mv/staged/*.jar
           if-no-files-found: error
 
   package:
@@ -77,12 +87,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Wbuduj mod kosmetyków (kopiowany do instancji przy starcie gry).
-      - name: Pobierz jar moda
+      # Wbuduj mody kosmetyków (per wersja MC) — launcher wybiera pasujący jar.
+      - name: Pobierz jary moda (wszystkie wersje)
         uses: actions/download-artifact@v4
         with:
-          name: cosmetics-mod-jar
+          name: cosmetics-mod-jars
           path: resources/mods
+
+      # Kopia pod generyczną nazwą — fallback dla 1.21.1 (zgodność wsteczna).
+      - name: Generyczny jar (fallback 1.21.1)
+        shell: bash
+        run: cp resources/mods/craftium-cosmetics-1.21.1.jar resources/mods/craftium-cosmetics.jar
 
       - name: Build (renderer/main/preload)
         run: npm run build
