@@ -1,0 +1,123 @@
+# UWAGA: ten plik należy do repo nexciq/craftium-releases (publiczne, darmowe Actions),
+# jako .github/workflows/mod-validate.yml. Kopia referencyjna w prywatnym craftium.
+#
+# Buduje multi-wersyjny mod (Stonecutter) dla WSZYSTKICH skonfigurowanych wersji
+# naraz (chiseledBuild), by sprawdzić, czy kompilują się, ZANIM dopniemy je do
+# wydań. Nic nie publikuje — tylko artefakty jarów do pobrania/inspekcji.
+# Wymaga sekretu SOURCE_TOKEN (Contents: Read na craftium).
+
+name: Validate mod versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Gałąź/tag w repo źródłowym (nexciq/craftium)'
+        default: claude/minecraft-launcher-build-52gbha
+
+jobs:
+  stonecutter:
+    name: Stonecutter (wszystkie wersje)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: chiseledBuild (1.20.1 + 1.21.1)
+        working-directory: cosmetics-mod-mv
+        run: gradle chiseledBuild --no-daemon --stacktrace
+
+      - name: Zbierz jary per wersja
+        working-directory: cosmetics-mod-mv
+        run: |
+          mkdir -p staged
+          for d in versions/*/; do
+            ver=$(basename "$d")
+            jar=$(ls "${d}build/libs/"craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+            if [ -n "$jar" ]; then
+              cp "$jar" "staged/craftium-cosmetics-${ver}.jar"
+              echo "OK ${ver} -> ${jar}"
+            else
+              echo "BRAK jara dla ${ver}"
+            fi
+          done
+          ls -la staged
+
+      - name: Upload jary (do inspekcji)
+        uses: actions/upload-artifact@v4
+        with:
+          name: stonecutter-jars
+          path: cosmetics-mod-mv/staged/*.jar
+          if-no-files-found: error
+
+  # Minecraft 26.x: oficjalne mapowania Mojang, Loom 1.15, Gradle 9.4, Java 25.
+  # Osobny job (inny toolchain). Matryca: 26.1.x (jeden jar) + 26.2.
+  mc26:
+    name: Mod ${{ matrix.mc }} (Mojang mappings)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: '26.1.2'
+            depend: '>=26.1 <26.2'
+            java: '25'
+          - mc: '26.2'
+            depend: '~26.2'
+            java: '25'
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4'
+
+      - name: Build ${{ matrix.mc }}
+        working-directory: cosmetics-mod-26
+        run: >
+          gradle build --no-daemon --stacktrace
+          -Pminecraft_version=${{ matrix.mc }}
+          -Pjava_version=${{ matrix.java }}
+          "-Pmc_depend=${{ matrix.depend }}"
+
+      - name: Zbierz jar
+        run: |
+          mkdir -p staged26
+          jar=$(ls cosmetics-mod-26/build/libs/craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+          if [ -n "$jar" ]; then
+            cp "$jar" "staged26/craftium-cosmetics-${{ matrix.mc }}.jar"
+            echo "OK ${{ matrix.mc }} -> $jar"
+          else
+            echo "BRAK jara ${{ matrix.mc }}"
+          fi
+          ls -la staged26 || true
+
+      - name: Upload jar ${{ matrix.mc }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc26-jar-${{ matrix.mc }}
+          path: staged26/*.jar
+          if-no-files-found: error
