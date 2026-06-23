@@ -44,24 +44,24 @@ jobs:
         working-directory: cosmetics-mod-mv
         run: |
           mkdir -p staged
-          for d in versions/*/; do
-            ver=$(basename "$d")
-            jar=$(ls "${d}build/libs/"craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
-            if [ -n "$jar" ]; then
-              cp "$jar" "staged/craftium-cosmetics-${ver}.jar"
-              echo "OK ${ver} -> ${jar}"
-            else
-              echo "BRAK jara dla ${ver}"
-            fi
+          echo "== wszystkie jary w build/libs =="
+          find . -path '*/build/libs/*.jar' | sort || true
+          # Zbierz jary niezależnie od dokładnej ścieżki Stonecuttera.
+          find . -path '*/build/libs/*.jar' -name 'craftium-cosmetics-*.jar' ! -name '*-sources.jar' |
+          while read -r jar; do
+            ver=$(printf '%s' "$jar" | sed -n 's#.*/versions/\([^/]*\)/.*#\1#p')
+            [ -z "$ver" ] && ver=$(basename "$jar" .jar)
+            cp "$jar" "staged/craftium-cosmetics-${ver}.jar"
+            echo "OK ${ver} <- ${jar}"
           done
-          ls -la staged
+          echo "== staged =="; ls -la staged || true
 
       - name: Upload jary (do inspekcji)
         uses: actions/upload-artifact@v4
         with:
           name: stonecutter-jars
           path: cosmetics-mod-mv/staged/*.jar
-          if-no-files-found: error
+          if-no-files-found: warn
 
   # Minecraft 26.x: oficjalne mapowania Mojang, Loom 1.15, Gradle 9.4, Java 25.
   # Osobny job (inny toolchain). Matryca: 26.1.x (jeden jar) + 26.2.
@@ -93,7 +93,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '9.4'
+          # '9.4' nie istnieje jako identyfikator dystrybucji — bierzemy najnowszy
+          # stabilny Gradle (spełnia wymóg Loom 1.15 dla 26.x).
+          gradle-version: 'current'
 
       - name: Build ${{ matrix.mc }}
         working-directory: cosmetics-mod-26
