@@ -70,6 +70,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - mc: '26.1'
+            depend: '>=26.1 <26.2'
+            java: '25'
           - mc: '26.1.1'
             depend: '>=26.1 <26.2'
             java: '25'
