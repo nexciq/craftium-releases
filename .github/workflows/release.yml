@@ -48,14 +48,14 @@ jobs:
         working-directory: cosmetics-mod-mv
         run: |
           mkdir -p staged
-          find . -path '*/build/libs/*.jar' -name 'craftium-cosmetics-*.jar' ! -name '*-sources.jar' |
-          while read -r jar; do
-            ver=$(printf '%s' "$jar" | sed -n 's#.*/versions/\([^/]*\)/.*#\1#p')
-            [ -z "$ver" ] && ver=$(basename "$jar" .jar)
-            cp "$jar" "staged/craftium-cosmetics-${ver}.jar"
-            echo "OK ${ver} <- ${jar}"
-          done
+          echo "== INWENTARZ wszystkich jarów craftium-cosmetics =="
+          find . -name 'craftium-cosmetics*.jar' | sort || true
+          # Jar nazywa się craftium-cosmetics-<mcVersion>.jar (version=mcVersion),
+          # więc kopiujemy po nazwie bazowej z dowolnego build/libs.
+          find . -path '*build/libs*' -name 'craftium-cosmetics-*.jar' \
+               ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp -n {} staged/ \;
           echo "== staged =="; ls -la staged
+          [ -n "$(ls -A staged 2>/dev/null)" ] || { echo "!! BRAK jarów — patrz inwentarz wyżej"; exit 1; }
 
       - name: Upload jary moda
         uses: actions/upload-artifact@v4
