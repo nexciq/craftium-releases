@@ -63,8 +63,11 @@ jobs:
           path: cosmetics-mod-mv/staged/*.jar
           if-no-files-found: warn
 
-  # Minecraft 26.x: oficjalne mapowania Mojang, Loom 1.15, Gradle 9.4, Java 25.
-  # Osobny job (inny toolchain). Matryca: 26.1.x (jeden jar) + 26.2.
+  # Minecraft 26.1.x: oficjalne mapowania Mojang, Loom 1.17-SNAPSHOT, Gradle current, Java 25.
+  # Osobny job (inny toolchain). Cała rodzina dropu 1 (26.1, 26.1.1, 26.1.2) dzieli to
+  # samo API renderu (MultiBufferSource + RenderTypes). 26.2 NIE tu — przebudowało
+  # cały system renderu encji (SubmitNodeCollector zamiast MultiBufferSource), więc
+  # wymaga osobnego miksina (patrz cosmetics-mod-262 / docs/cosmetics-versions.md).
   mc26:
     name: Mod ${{ matrix.mc }} (Mojang mappings)
     runs-on: ubuntu-latest
@@ -72,11 +75,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - mc: '26.1.2'
+          - mc: '26.1.1'
             depend: '>=26.1 <26.2'
             java: '25'
-          - mc: '26.2'
-            depend: '~26.2'
+          - mc: '26.1.2'
+            depend: '>=26.1 <26.2'
             java: '25'
     steps:
       - name: Pobierz prywatne źródło
@@ -93,8 +96,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          # '9.4' nie istnieje jako identyfikator dystrybucji — bierzemy najnowszy
-          # stabilny Gradle (spełnia wymóg Loom 1.15 dla 26.x).
+          # Najnowszy stabilny Gradle (wymagany przez Loom 1.17-SNAPSHOT dla 26.x).
           gradle-version: 'current'
 
       - name: Build ${{ matrix.mc }}
@@ -123,3 +125,50 @@ jobs:
           name: mc26-jar-${{ matrix.mc }}
           path: staged26/*.jar
           if-no-files-found: error
+
+  # Minecraft 26.2: PRZEBUDOWANY render encji (deferred submit). Osobne źródło
+  # cosmetics-mod-262 z innym miksinem (OrderedRenderCommandQueue/CameraRenderState).
+  # Best-effort — iterujemy nazwy/sygnatury przez ten job. Może być czerwony,
+  # nie blokuje rodziny 26.1.x (osobny job).
+  mc262:
+    name: Mod 26.2 (deferred submit, best-effort)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 'current'
+
+      - name: Build 26.2
+        working-directory: cosmetics-mod-262
+        run: gradle build --no-daemon --stacktrace -Pminecraft_version=26.2
+
+      - name: Zbierz jar
+        run: |
+          mkdir -p staged262
+          jar=$(ls cosmetics-mod-262/build/libs/craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+          if [ -n "$jar" ]; then
+            cp "$jar" "staged262/craftium-cosmetics-26.2.jar"
+            echo "OK 26.2 -> $jar"
+          else
+            echo "BRAK jara 26.2"
+          fi
+          ls -la staged262 || true
+
+      - name: Upload jar 26.2
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc262-jar
+          path: staged262/*.jar
+          if-no-files-found: warn
