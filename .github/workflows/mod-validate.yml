@@ -36,9 +36,12 @@ jobs:
         with:
           gradle-version: '8.10'
 
-      - name: chiseledBuild (1.20.1 + 1.21.1)
+      - name: chiseledBuild (wszystkie wersje)
         working-directory: cosmetics-mod-mv
-        run: gradle chiseledBuild --no-daemon --stacktrace
+        run: |
+          gradle chiseledBuild --no-daemon --stacktrace
+          echo "== JARY w całym workspace po chiseledBuild =="
+          find "$GITHUB_WORKSPACE" -name '*.jar' 2>/dev/null | grep -i cosmetics | sort || true
 
       - name: Zbierz jary per wersja
         working-directory: cosmetics-mod-mv
@@ -48,7 +51,7 @@ jobs:
           find . -name 'craftium-cosmetics*.jar' | sort || true
           # Jar nazywa się craftium-cosmetics-<mcVersion>.jar (version=mcVersion),
           # więc kopiujemy po nazwie bazowej z dowolnego build/libs.
-          find . -path '*build/libs*' -name 'craftium-cosmetics-*.jar' \
+          find "$GITHUB_WORKSPACE" -path '*build/libs*' -name 'craftium-cosmetics-*.jar' \
                ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp -n {} staged/ \;
           echo "== staged =="; ls -la staged
           [ -n "$(ls -A staged 2>/dev/null)" ] || { echo "!! BRAK jarów — patrz inwentarz wyżej"; exit 1; }
