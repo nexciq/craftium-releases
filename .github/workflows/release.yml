@@ -62,6 +62,87 @@ jobs:
           path: cosmetics-mod-mv/staged/*.jar
           if-no-files-found: error
 
+  # Mod 1.21.2–1.21.8 (yarn, era „render-state") — osobny Stonecutter (Loom 1.9).
+  modd1:
+    name: Mod kosmetyków (Stonecutter D1 — 1.21.2–1.21.8)
+    runs-on: ubuntu-latest
+    # Best-effort: czerwony D1 NIE blokuje wydania (brak jara = brak odznaki dla tych
+    # wersji, launcher degraduje się łagodnie). Walidacja w „Validate mod versions".
+    continue-on-error: true
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10'
+
+      - name: chiseledBuild + zbierz jary
+        working-directory: cosmetics-mod-d1
+        run: |
+          gradle chiseledBuild --no-daemon --stacktrace --console=plain --rerun-tasks
+          mkdir -p staged
+          find "$GITHUB_WORKSPACE/cosmetics-mod-d1" -path '*build/libs*' -name 'craftium-cosmetics-*.jar' \
+               ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp -n {} staged/ \;
+          echo "===== staged ====="; ls -la staged
+          [ -n "$(ls -A staged 2>/dev/null)" ] || { echo "!! BRAK jarów D1"; exit 1; }
+
+      - name: Upload jary moda D1
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-mod-jars-d1
+          path: cosmetics-mod-d1/staged/*.jar
+          if-no-files-found: error
+
+  # Mod 1.21.9–1.21.11 (yarn, era „deferred submit") — osobny Stonecutter (Loom 1.11).
+  modd2:
+    name: Mod kosmetyków (Stonecutter D2 — 1.21.9–1.21.11)
+    runs-on: ubuntu-latest
+    # Best-effort: czerwony D2 NIE blokuje wydania (jw.).
+    continue-on-error: true
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 'current'
+
+      - name: chiseledBuild + zbierz jary
+        working-directory: cosmetics-mod-d2
+        run: |
+          gradle chiseledBuild --no-daemon --stacktrace --console=plain --rerun-tasks
+          mkdir -p staged
+          find "$GITHUB_WORKSPACE/cosmetics-mod-d2" -path '*build/libs*' -name 'craftium-cosmetics-*.jar' \
+               ! -name '*-sources.jar' ! -name '*-dev.jar' -exec cp -n {} staged/ \;
+          echo "===== staged ====="; ls -la staged
+          [ -n "$(ls -A staged 2>/dev/null)" ] || { echo "!! BRAK jarów D2"; exit 1; }
+
+      - name: Upload jary moda D2
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-mod-jars-d2
+          path: cosmetics-mod-d2/staged/*.jar
+          if-no-files-found: error
+
   # Mod 26.1.x — oddzielny toolchain (mapowania Mojang, Java 25, Gradle current).
   mod26:
     name: Mod kosmetyków ${{ matrix.mc }} (Mojang)
@@ -154,7 +235,7 @@ jobs:
 
   package:
     name: Instalator Windows
-    needs: [mod, mod26, mod262]
+    needs: [mod, modd1, modd2, mod26, mod262]
     runs-on: windows-latest
     permissions:
       contents: write # GITHUB_TOKEN tworzy/aktualizuje Release w craftium-releases
