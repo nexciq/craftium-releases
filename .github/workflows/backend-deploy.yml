@@ -41,8 +41,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Apply D1 migration (idempotentne)
+      - name: Apply D1 migration 0001 (idempotentne)
         run: npx wrangler d1 execute craftium --remote --file=migrations/0001_init.sql
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Apply D1 migration 0002 — presence per serwer (idempotentne)
+        run: npx wrangler d1 execute craftium --remote --file=migrations/0002_presence_server.sql
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
