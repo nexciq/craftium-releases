@@ -64,9 +64,97 @@ jobs:
           path: cosmetics-mod-mv/staged/*.jar
           if-no-files-found: error
 
+  # Mod 26.1.x — oddzielny toolchain (mapowania Mojang, Java 25, Gradle current).
+  mod26:
+    name: Mod kosmetyków ${{ matrix.mc }} (Mojang)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: '26.1.1'
+            depend: '>=26.1 <26.2'
+          - mc: '26.1.2'
+            depend: '>=26.1 <26.2'
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 'current'
+
+      - name: Build ${{ matrix.mc }}
+        working-directory: cosmetics-mod-26
+        run: >
+          gradle build --no-daemon --stacktrace
+          -Pminecraft_version=${{ matrix.mc }}
+          -Pjava_version=25
+          "-Pmc_depend=${{ matrix.depend }}"
+
+      - name: Zbierz jar
+        run: |
+          mkdir -p staged26
+          jar=$(ls cosmetics-mod-26/build/libs/craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+          cp "$jar" "staged26/craftium-cosmetics-${{ matrix.mc }}.jar"
+
+      - name: Upload jar ${{ matrix.mc }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-mod-jars-26-${{ matrix.mc }}
+          path: staged26/*.jar
+          if-no-files-found: error
+
+  # Mod 26.2 — oddzielne źródło (przebudowany render: deferred submit).
+  mod262:
+    name: Mod kosmetyków 26.2 (Mojang, deferred submit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 'current'
+
+      - name: Build 26.2
+        working-directory: cosmetics-mod-262
+        run: gradle build --no-daemon --stacktrace -Pminecraft_version=26.2
+
+      - name: Zbierz jar
+        run: |
+          mkdir -p staged262
+          jar=$(ls cosmetics-mod-262/build/libs/craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+          cp "$jar" "staged262/craftium-cosmetics-26.2.jar"
+
+      - name: Upload jar 26.2
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmetics-mod-jars-262
+          path: staged262/*.jar
+          if-no-files-found: error
+
   package:
     name: Instalator Windows
-    needs: mod
+    needs: [mod, mod26, mod262]
     runs-on: windows-latest
     permissions:
       contents: write # GITHUB_TOKEN tworzy/aktualizuje Release w craftium-releases
@@ -88,11 +176,13 @@ jobs:
         run: npm ci
 
       # Wbuduj mody kosmetyków (per wersja MC) — launcher wybiera pasujący jar.
+      # Pobiera wszystkie artefakty: Stonecutter (1.18.2–1.21.1) + 26.1.x + 26.2.
       - name: Pobierz jary moda (wszystkie wersje)
         uses: actions/download-artifact@v4
         with:
-          name: cosmetics-mod-jars
+          pattern: cosmetics-mod-jars*
           path: resources/mods
+          merge-multiple: true
 
       # Kopia pod generyczną nazwą — fallback dla 1.21.1 (zgodność wsteczna).
       - name: Generyczny jar (fallback 1.21.1)
