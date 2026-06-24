@@ -84,7 +84,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.10'
+          # Loom 1.9-SNAPSHOT wymaga Gradle >=8.11.
+          gradle-version: '8.12'
 
       - name: chiseledBuild + zbierz jary
         working-directory: cosmetics-mod-d1
