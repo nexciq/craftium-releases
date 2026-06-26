@@ -1,0 +1,59 @@
+# UWAGA: ten plik należy do repo nexciq/craftium-releases (publiczne, darmowe Actions),
+# jako .github/workflows/mod-262.yml. Kopia referencyjna w prywatnym craftium (ops/).
+#
+# Szybki build SAMEGO moda 26.2 (cosmetics-mod-262) — do iteracji bez czekania na
+# pełną walidację wszystkich er. Wystawia jar jako artefakt `mc262-jar`.
+# Wymaga sekretu SOURCE_TOKEN (Contents: Read na nexciq/craftium).
+
+name: Mod 26.2 (szybki)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Gałąź/tag w repo źródłowym (nexciq/craftium)'
+        default: claude/minecraft-launcher-build-52gbha
+
+jobs:
+  mod262:
+    name: Build 26.2 (Mojang, deferred submit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobierz prywatne źródło
+        uses: actions/checkout@v4
+        with:
+          repository: nexciq/craftium
+          ref: ${{ inputs.ref }}
+          token: ${{ secrets.SOURCE_TOKEN }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 'current'
+
+      - name: Build 26.2
+        working-directory: cosmetics-mod-262
+        run: gradle build --no-daemon --stacktrace --console=plain -Pminecraft_version=26.2
+
+      - name: Zbierz jar
+        run: |
+          mkdir -p staged262
+          jar=$(ls cosmetics-mod-262/build/libs/craftium-cosmetics-*.jar 2>/dev/null | grep -v sources | head -1)
+          if [ -n "$jar" ]; then
+            cp "$jar" "staged262/craftium-cosmetics-26.2.jar"
+            echo "OK 26.2 -> $jar"
+          else
+            echo "BRAK jara 26.2"; exit 1
+          fi
+          ls -la staged262
+
+      - name: Upload jar 26.2
+        uses: actions/upload-artifact@v4
+        with:
+          name: mc262-jar
+          path: staged262/*.jar
+          if-no-files-found: error
